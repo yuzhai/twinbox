@@ -10,7 +10,17 @@
 cd ~/qbox/twinbox && make build && make verify
 ```
 
-期望最后一行：`verify: 全部通过`。它依次执行 vet、全部单测、构建、红队脚本
+期望最后一行：`verify: 全部通过`。
+
+真实流程另有一条（消耗额度，需显式执行）：
+
+```bash
+make e2e-real    # 期望：PASS e2e-real agent 完成对话 / 工具调用写入了工作区文件
+```
+
+**注意：完整流程只能在本地跑。** GitHub Actions 的 ubuntu-24.04 runner 设置了
+`kernel.apparmor_restrict_unprivileged_userns=1`，实测 `bwrap` 启动失败（`BWRAP_FAIL`）。
+CI 只覆盖 vet、单测、构建与 `prove`；沙箱与真实流程必须在开启非特权 userns 的 Linux 上执行。它依次执行 vet、全部单测、构建、红队脚本
 （端到端注入、审计、撤销、MCP 隧道、入箱审查、12 条沙箱内断言）。
 
 补充检查：
@@ -34,6 +44,7 @@ cd ~/qbox/twinbox && make build && make verify
 | 审计与对账 | JSONL 记录 + `twinbox log` |
 | 可撤销 | 删除凭据后调用失败 |
 | 可公开性检查 | `prove` 在 CI 中执行 |
+| 真实 agent 端到端（opencode） | `make e2e-real`：真实网关 200、工具调用写入文件 |
 
 ## 队列（按价值排序）
 
