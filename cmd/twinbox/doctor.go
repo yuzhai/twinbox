@@ -154,11 +154,16 @@ func cmdProve(args []string) error {
 		for sc.Scan() {
 			line++
 			for _, re := range secretPatterns {
-				if re.MatchString(sc.Text()) {
-					fmt.Printf("%s:%d 命中 %s\n", p, line, re.String())
-					hits++
-					break
+				m := re.FindString(sc.Text())
+				if m == "" {
+					continue
 				}
+				if strings.Contains(strings.ToLower(m), "placeholder") {
+					continue // 占位符是有意为之，不算命中
+				}
+				fmt.Printf("%s:%d 命中 %s\n", p, line, m)
+				hits++
+				break
 			}
 		}
 		return nil
