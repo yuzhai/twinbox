@@ -12,7 +12,8 @@ import (
 type Context struct {
 	Home    string // 沙箱内 home（宿主路径）
 	BaseURL string // 例如 http://127.0.0.1:8899
-	Compat  string // OpenAI 兼容网关的虚拟主机名
+	Compat  string   // OpenAI 兼容网关的虚拟主机名
+	MCP     []string // 可用的 MCP server 名
 }
 
 // Adapter 描述一个 agent 的接入方式。
@@ -57,7 +58,22 @@ func claudeWrite(c Context) error {
 		return err
 	}
 	// 只写非敏感的客户端设置；密钥通过环境变量传入占位符。
-	return os.WriteFile(filepath.Join(dir, "settings.json"), []byte("{\n  \"includeCoAuthoredBy\": false\n}\n"), 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte("{\n  \"includeCoAuthoredBy\": false\n}\n"), 0o600); err != nil {
+		return err
+	}
+	if len(c.MCP) == 0 {
+		return nil
+	}
+	var sb strings.Builder
+	sb.WriteString("{\n  \"mcpServers\": {\n")
+	for i, name := range c.MCP {
+		if i > 0 {
+			sb.WriteString(",\n")
+		}
+		fmt.Fprintf(&sb, "    %q: {\"command\": \"%s\", \"args\": [\"mcp\", %q]}", name, shimPath, name)
+	}
+	sb.WriteString("\n  }\n}\n")
+	return os.WriteFile(filepath.Join(c.Home, ".mcp.json"), []byte(sb.String()), 0o600)
 }
 
 func codexEnv(c Context) map[string]string {
@@ -103,10 +119,28 @@ func opencodeWrite(c Context) error {
       }
     }
   },
-  "mcp": { "servers": {} }
+  "mcp": { "servers": %s }
 }
-`, c.BaseURL, Placeholder)
+`, c.BaseURL, Placeholder, opencodeMCP(c.MCP))
 	return os.WriteFile(filepath.Join(dir, "opencode.jsonc"), []byte(conf), 0o600)
+}
+
+const shimPath = "/run/twinbox/bin/twinbox-shim"
+
+func opencodeMCP(names []string) string {
+	if len(names) == 0 {
+		return "{}"
+	}
+	var sb strings.Builder
+	sb.WriteString("{\n")
+	for i, n := range names {
+		if i > 0 {
+			sb.WriteString(",\n")
+		}
+		fmt.Fprintf(&sb, "      %q: {\"type\": \"local\", \"command\": [\"%s\", \"mcp\", %q]}", n, shimPath, n)
+	}
+	sb.WriteString("\n    }")
+	return sb.String()
 }
 
 func fakeEnv(c Context) map[string]string {

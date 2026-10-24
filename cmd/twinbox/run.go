@@ -2,18 +2,21 @@ package main
 
 import (
 	"crypto/sha1"
+	"encoding/json"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/yuzhai/twinbox/internal/agent"
 	"github.com/yuzhai/twinbox/internal/audit"
 	"github.com/yuzhai/twinbox/internal/broker"
+	"github.com/yuzhai/twinbox/internal/mcp"
 	"github.com/yuzhai/twinbox/internal/policy"
 	"github.com/yuzhai/twinbox/internal/sandbox"
 	"github.com/yuzhai/twinbox/internal/store"
@@ -134,11 +137,48 @@ func cmdRun(args []string) error {
 		return err
 	}
 
-	ctx := agent.Context{Home: homeDir, BaseURL: "http://127.0.0.1:8899", Compat: "compat.local"}
+	var mcpNames []string
+	var mcpSockHost string
+	if cfg := os.Getenv("TWINBOX_MCP_CONFIG"); cfg != "" {
+		raw, err := os.ReadFile(cfg)
+		if err != nil {
+			return fmt.Errorf("读取 MCP 配置失败: %w", err)
+		}
+		var doc struct {
+			Servers map[string]mcp.ServerSpec `json:"servers"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("解析 MCP 配置失败: %w", err)
+		}
+		if len(doc.Servers) > 0 {
+			gw := &mcp.Gateway{Servers: doc.Servers, Secrets: st}
+			mcpSockHost = filepath.Join(rt, "mcp.sock")
+			go func() {
+				if err := gw.ServeUnix(mcpSockHost); err != nil {
+					fmt.Fprintf(os.Stderr, "twinbox: mcp gateway: %v\n", err)
+				}
+			}()
+			for i := 0; i < 100; i++ {
+				if _, err := os.Stat(mcpSockHost); err == nil {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			for name := range doc.Servers {
+				mcpNames = append(mcpNames, name)
+			}
+			sort.Strings(mcpNames)
+		}
+	}
+
+	ctx := agent.Context{Home: homeDir, BaseURL: "http://127.0.0.1:8899", Compat: "compat.local", MCP: mcpNames}
 	env := map[string]string{
 		"TWINBOX":        "1",
 		"TWINBOX_SOCK":   "/run/twinbox/broker.sock",
 		"TWINBOX_ROUTES": "8899=api.anthropic.com",
+	}
+	if mcpSockHost != "" {
+		env["TWINBOX_MCP_SOCK"] = "/run/twinbox/mcp.sock"
 	}
 	for k, v := range ad.Env(ctx) {
 		env[k] = v
@@ -154,6 +194,9 @@ func cmdRun(args []string) error {
 	m.Home = homeDir
 	m.Cwd = "/workspace/" + filepath.Base(ws[0])
 	m.Sockets[sock] = "/run/twinbox/broker.sock"
+	if mcpSockHost != "" {
+		m.Sockets[mcpSockHost] = "/run/twinbox/mcp.sock"
+	}
 	m.Bins[shim] = "/run/twinbox/bin/twinbox-shim"
 	m.Env = env
 

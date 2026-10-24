@@ -32,8 +32,14 @@ func main() {
 			os.Exit(1)
 		}
 	case "mcp":
-		fmt.Fprintln(os.Stderr, "twinbox-shim: mcp 隧道尚未实现")
-		os.Exit(1)
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "用法: twinbox-shim mcp <name>")
+			os.Exit(2)
+		}
+		if err := mcpCmd(os.Args[2]); err != nil {
+			fmt.Fprintf(os.Stderr, "twinbox-shim: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
 		os.Exit(2)
@@ -145,4 +151,27 @@ func handle(c net.Conn, sock, virtualHost string) {
 	}
 	defer resp.Body.Close()
 	_ = resp.Write(c)
+}
+
+// mcpCmd 把 stdin/stdout 经 unix socket 接到宿主的 MCP 网关。
+func mcpCmd(name string) error {
+	sock := os.Getenv("TWINBOX_MCP_SOCK")
+	if sock == "" {
+		return fmt.Errorf("TWINBOX_MCP_SOCK 未设置")
+	}
+	c, err := net.DialTimeout("unix", sock, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if _, err := fmt.Fprintf(c, "%s\n", name); err != nil {
+		return err
+	}
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(c, os.Stdin)
+		done <- struct{}{}
+	}()
+	_, err = io.Copy(os.Stdout, c)
+	return err
 }

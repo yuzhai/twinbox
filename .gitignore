@@ -1,0 +1,19 @@
+# 密钥类 —— 永不提交
+secrets.json
+secrets.toml
+*.key
+*.pem
+.env
+.env.*
+credentials.json
+auth.json
+
+# 构建产物
+/bin/
+/twinbox
+/twinbox-shim
+/dist/
+
+# 运行时噪音
+*.log
+audit/*.jsonl
