@@ -166,7 +166,7 @@ func cmdRun(args []string) error {
 			return fmt.Errorf("解析 MCP 配置失败: %w", err)
 		}
 		if len(doc.Servers) > 0 {
-			gw := &mcp.Gateway{Servers: doc.Servers, Secrets: st}
+			gw := &mcp.Gateway{Servers: doc.Servers, Secrets: st, Audit: al}
 			mcpSockHost = filepath.Join(rt, "mcp.sock")
 			go func() {
 				if err := gw.ServeUnix(mcpSockHost); err != nil {

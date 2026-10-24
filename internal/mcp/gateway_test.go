@@ -87,3 +87,39 @@ func TestGatewayRejectsUnknownServer(t *testing.T) {
 		t.Fatalf("应拒绝未知 server，得到 %q", line)
 	}
 }
+
+func TestGatewayDeniesToolByPolicy(t *testing.T) {
+	dir := t.TempDir()
+	fake := "../../testdata/fake-mcp.sh"
+	if _, err := os.Stat(fake); err != nil {
+		t.Skip("缺少 testdata/fake-mcp.sh")
+	}
+	gw := &Gateway{
+		Servers: map[string]ServerSpec{
+			"echo": {Command: []string{"/bin/sh", fake}, Deny: []string{"delete_*"}},
+		},
+	}
+	sock := filepath.Join(dir, "mcp.sock")
+	go func() { _ = gw.ServeUnix(sock) }()
+	for i := 0; i < 100; i++ {
+		if _, err := net.Dial("unix", sock); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	c, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	_, _ = c.Write([]byte("echo\n"))
+	_, _ = c.Write([]byte(`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"delete_repo"}}` + "\n"))
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	line, err := bufio.NewReader(c).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "not allowed") {
+		t.Fatalf("应拒绝该工具，得到 %q", line)
+	}
+}
