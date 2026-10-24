@@ -11,9 +11,11 @@ import (
 // Context 是生成配置所需的上下文。
 type Context struct {
 	Home    string // 沙箱内 home（宿主路径）
-	BaseURL string // 例如 http://127.0.0.1:8899
+	BaseURL   string // 例如 http://127.0.0.1:8899
+	CompatURL string // 兼容网关的本地入口，例如 http://127.0.0.1:8897
 	Compat  string   // OpenAI 兼容网关的虚拟主机名
 	MCP     []string // 可用的 MCP server 名
+	Models  []string // 可选：透传给客户端的模型名
 }
 
 // Adapter 描述一个 agent 的接入方式。
@@ -107,6 +109,21 @@ func opencodeWrite(c Context) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	models := c.Models
+	if len(models) == 0 {
+		models = []string{"default"}
+	}
+	var mb strings.Builder
+	for i, m := range models {
+		if i > 0 {
+			mb.WriteString(",\n")
+		}
+		fmt.Fprintf(&mb, "        %q: {\"name\": %q}", m, m)
+	}
+	base := c.CompatURL
+	if base == "" {
+		base = c.BaseURL
+	}
 	conf := fmt.Sprintf(`{
   "$schema": "https://opencode.ai/config.json",
   "providers": {
@@ -116,12 +133,15 @@ func opencodeWrite(c Context) error {
       "settings": {
         "baseURL": "%s/compat",
         "apiKey": "%s"
+      },
+      "models": {
+%s
       }
     }
   },
   "mcp": { "servers": %s }
 }
-`, c.BaseURL, Placeholder, opencodeMCP(c.MCP))
+`, base, Placeholder, mb.String(), opencodeMCP(c.MCP))
 	return os.WriteFile(filepath.Join(dir, "opencode.jsonc"), []byte(conf), 0o600)
 }
 

@@ -51,3 +51,18 @@ func TestDirSkipsGitDir(t *testing.T) {
 		t.Fatalf(".git 应被跳过: %+v", found)
 	}
 }
+
+func TestDirIgnoresCodeExpressions(t *testing.T) {
+	dir := t.TempDir()
+	code := "cfg := Config{\n\tAPIKey: p.Settings.APIKey,\n\tSecret: os.Getenv(\"X\"),\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "derive.go"), []byte(code), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	found, err := Dir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 0 {
+		t.Fatalf("代码表达式不应命中: %+v", found)
+	}
+}
