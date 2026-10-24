@@ -58,7 +58,7 @@ make attack                   # 12 条沙箱断言 + 端到端 + 撤销
 ## 当前限制
 
 - 仅 Linux 后端（macOS / Windows 为路线图）
-- MCP 已支持 stdio 隧道；参数级策略与审批尚未实现
+- MCP 已支持 stdio 隧道与工具级 allow/deny；参数级判定与审批尚未实现
 - 环境使用宿主只读根，尚未做镜像解包与版本管理
 
 ## 来源说明

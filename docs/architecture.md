@@ -22,7 +22,7 @@
 | 审计 | `internal/audit` | 宿主 | 追加式 JSONL | 可被沙箱写入 |
 | 适配器 | `internal/agent` | 宿主 | 生成沙箱侧配置与环境变量 | 写入真实密钥 |
 | 沙箱内桥 | `cmd/twinbox-shim` | 沙箱 | 127.0.0.1 → unix socket；MCP stdio 隧道 | 持有任何秘密 |
-| MCP 网关 | `internal/mcp` | 宿主 | 拉起 MCP server、注入其凭据、按名字分发 | 把原始工具入参交给 shell |
+| MCP 网关 | `internal/mcp` | 宿主 | 拉起 MCP server、注入凭据、按名字分发、按 glob 判定工具（deny 优先） | 把原始工具入参交给 shell |
 
 ## 3. 数据流
 
@@ -76,7 +76,7 @@ twinbox run <agent>
 
 | 项 | 现状 | 计划 |
 | --- | --- | --- |
-| MCP 参数级策略 | 只做到按名字分发 | 按工具与参数判定，破坏性动词需审批 |
+| MCP 参数级策略 | 已实现按工具名 glob 判定，deny 优先 | 参数级判定与审批闸门 |
 | profile 解包 | 直接用宿主只读根 | OCI 镜像解包 + 版本目录 + 原子切换 |
 | macOS / Windows 后端 | 无 | 系统容器 / WSL2，语义不变 |
 | 入箱审查 | 已实现：文件名黑名单 + 内容扫描 + 覆盖留痕 | 增加对嵌套目录与二进制的覆盖 |

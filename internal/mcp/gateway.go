@@ -4,6 +4,7 @@ package mcp
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yuzhai/twinbox/internal/audit"
 	"github.com/yuzhai/twinbox/internal/store"
 )
 
@@ -20,12 +22,23 @@ import (
 type ServerSpec struct {
 	Command []string          `json:"command"`
 	Env     map[string]string `json:"env,omitempty"`
+	Allow   []string          `json:"allow,omitempty"` // 允许的工具名 glob
+	Deny    []string          `json:"deny,omitempty"`  // 拒绝的工具名 glob，优先
 }
 
 // Gateway 监听 unix socket，按名字拉起对应的 MCP server。
 type Gateway struct {
 	Servers map[string]ServerSpec
 	Secrets *store.Store
+	Audit   *audit.Log
+}
+
+type rpcMsg struct {
+	ID     json.RawMessage `json:"id"`
+	Method string          `json:"method"`
+	Params struct {
+		Name string `json:"name"`
+	} `json:"params"`
 }
 
 // ServeUnix 在 socket 上接受连接。每条连接的首行是 server 名。
@@ -98,9 +111,44 @@ func (g *Gateway) handle(c net.Conn) {
 		return
 	}
 	go func() {
-		_, _ = io.Copy(stdin, br)
+		sc := bufio.NewScanner(br)
+		sc.Buffer(make([]byte, 0, 64*1024), 4<<20)
+		for sc.Scan() {
+			line := sc.Bytes()
+			var m rpcMsg
+			if json.Unmarshal(line, &m) == nil && m.Method == "tools/call" {
+				if !ToolAllowed(m.Params.Name, spec.Allow, spec.Deny) {
+					g.audit(name, m.Params.Name, "deny")
+					fmt.Fprintf(c, "{\"jsonrpc\":\"2.0\",\"id\":%s,\"error\":{\"code\":-32601,\"message\":\"twinbox: tool not allowed: %s\"}}\n", idOrNull(m.ID), m.Params.Name)
+					continue
+				}
+				g.audit(name, m.Params.Name, "allow")
+			}
+			if _, err := stdin.Write(append(line, '\n')); err != nil {
+				break
+			}
+		}
 		_ = stdin.Close()
 	}()
 	_, _ = io.Copy(c, stdout)
 	_ = cmd.Wait()
+}
+
+func (g *Gateway) audit(server, tool, decision string) {
+	if g.Audit == nil {
+		return
+	}
+	_ = g.Audit.Write(audit.Record{
+		Host:     "mcp:" + server,
+		Method:   "tools/call",
+		Path:     tool,
+		Decision: decision,
+	})
+}
+
+func idOrNull(id json.RawMessage) string {
+	if len(id) == 0 {
+		return "null"
+	}
+	return string(id)
 }
