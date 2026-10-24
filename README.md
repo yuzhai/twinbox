@@ -5,7 +5,7 @@
 让编程 agent（Claude Code、Codex、opencode2）在桌面沙箱里获得**完整**的工作环境，
 但沙箱内**不含任何凭据**：API key、token、密码全部留在宿主侧。
 
-> 状态：v0 初始化，设计与实现进行中，暂不可用。
+> 状态：v0，Linux 后端可用，MCP 隧道与镜像 profile 未实现。
 > 目标：2026-10-26 产出首个可用版本。
 
 ## 问题
@@ -13,26 +13,54 @@
 我们已经有能力让 agent 替我们操作真实系统，却没有一种方式能让它拿不到我们的秘密：
 要么把完整的机器和凭据都交给它，要么把它关进一个干不了活的笼子。
 
-完整的问题拆解、**10 个使用场景**（含 SSH 远程操作）与成功判据见
-**[docs/problem.md](docs/problem.md)**。
+完整的问题拆解、10 个使用场景（含 SSH）与成功判据见 **[docs/problem.md](docs/problem.md)**。
 
-## 当前范围
+## 快速开始
 
-本仓库先定义问题，再给方案。后续文档与代码按 PR 提交，规划顺序：
+```bash
+make build
+./bin/twinbox doctor          # 检查 bwrap、目录、agent 二进制
+./bin/twinbox secret set anthropic <你的 key>   # 只写宿主侧，0600
+./bin/twinbox run claude      # 进入沙箱；agent 看到的是占位符
+./bin/twinbox log             # 查看出站审计
+./bin/twinbox prove .         # 仓库可公开性检查
+```
 
-1. 基线（威胁模型、关键决策、验收目标）
-2. 最小可运行骨架（Go CLI + 沙箱内 shim）
-3. 隔离与凭据通路
-4. MCP 网关与适配器
+离线验证（不需要网络与账号）：
 
-## 设计方向（尚未定稿）
+```bash
+make verify                   # vet + 单测 + 构建 + 红队
+make attack                   # 12 条沙箱断言 + 端到端 + 撤销
+```
 
-方向经过方案对比后确定，见 **[docs/solution-analysis.md](docs/solution-analysis.md)**
-（需求基线、业界做法差异、匹配度矩阵、目标方案与放弃项）。
+## 设计方向
 
-- **隔离**：Linux 用 bubblewrap（非特权、独立网络命名空间、出站默认拒绝）；macOS / Windows 用系统容器后端，四层语义一致。
-- **环境**：声明式环境镜像（OCI 解包），保证完整且可复现。
-- **凭据**：沙箱内只出现占位符，真实值由宿主侧代理在边界注入。
-- **MCP**：服务端运行在宿主，沙箱内配置不含任何敏感信息。
+选型依据见 **[docs/solution-analysis.md](docs/solution-analysis.md)**（需求基线、业界做法差异、匹配度矩阵）。
+
+- **隔离**：Linux 用 bubblewrap（非特权、独立网络命名空间、出站默认拒绝）。
+- **环境**：宿主只读根（v1）；镜像 profile 解包为路线图。
+- **凭据**：沙箱内只出现占位符，真实值由宿主侧 broker 在边界注入。
+- **MCP**：服务端运行在宿主（路线图），沙箱内配置不含任何敏感信息。
 - **会话**：状态持久在宿主磁盘，进程随终端退出即销毁。
-- **易用**：不写配置文件，不重新录入机器上已有的 key。
+- **易用**：不写配置文件，不重复录入机器上已有的 key。
+
+## 文档
+
+- [问题定义](docs/problem.md)
+- [威胁模型](docs/threat-model.md)
+- [方案分析](docs/solution-analysis.md)
+- [架构](docs/architecture.md)
+- [测试与验收](docs/testing.md)
+- [未决问题](docs/open-questions.md)
+- [演示脚本](docs/demo-script.md)
+
+## 当前限制
+
+- 仅 Linux 后端（macOS / Windows 为路线图）
+- MCP 隧道未实现：`twinbox-shim mcp` 返回未实现
+- 环境使用宿主只读根，尚未做镜像解包与版本管理
+
+## 来源说明
+
+本项目从零开始，未引入任何第三方 codebase，因此不需要 `v0` tag。
+若后续必须引入外部代码，该导入必须单独成为一个 commit 并打 `v0` tag。
