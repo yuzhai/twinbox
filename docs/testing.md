@@ -30,7 +30,7 @@ make verify     # L0 + L1 + L2 + L3 + L4 + L6，全部通过才返回 0
 make verify-ci  # 仅 L1 + L2 + 密钥扫描，供 CI 使用
 make attack     # 只跑 L4，用于演示与回归
 make e2e        # L5，默认用假 agent（离线）
-make e2e-real   # L5'，真实 agent + 真实网关（消耗额度，需显式执行）
+make e2e-real   # L5，真实 agent + 真实网关（消耗额度，需显式执行）
 ```
 
 每条用例输出一行 `PASS/FAIL <编号> <说明>`，失败时把实际输出一并打印。

@@ -45,13 +45,14 @@ CI 只覆盖 vet、单测、构建与 `prove`；沙箱与真实流程必须在�
 | 可撤销 | 删除凭据后调用失败 |
 | 可公开性检查 | `prove` 在 CI 中执行 |
 | 真实 agent 端到端（opencode） | `make e2e-real`：真实网关 200、工具调用写入文件 |
+| 环境 profile（镜像解包 + overlay 根） | `profile install ubuntu:24.04` 后沙箱内为 24.04，宿主为 26.04 |
 
 ## 队列（按价值排序）
 
 | 优先级 | 项 | 前置 |
 | --- | --- | --- |
 | P0 | 真实 agent 端到端（claude / codex 安装并对接本地假上游） | 需要安装二进制 |
-| P1 | profile 镜像解包与版本目录 | 需要 docker 与约 1GB 磁盘 |
+| P1 | profile 版本清理与引用保护 | 无 |
 | P2 | macOS / Windows 后端 | 需要对应平台 |
 | P3 | 会话命令（clean / --new） | 无 |
 | P4 | 演示视频 | 需要有麦克风环境 |

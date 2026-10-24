@@ -40,6 +40,7 @@ func cmdRun(args []string) error {
 	deriveOC := fs.Bool("derive-opencode", false, "从本机 opencode 配置派生 base URL 与密钥（仅内存）")
 	providerName := fs.String("provider", "qiniu", "派生的 provider 名")
 	modelName := fs.String("model", "", "透传给 agent 的模型名")
+	profile := fs.String("profile", "", "环境 profile（目录或名字）；为空则使用宿主只读根")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -231,6 +232,13 @@ func cmdRun(args []string) error {
 	}
 
 	m := sandbox.Default()
+	if *profile != "" {
+		dir, err := resolveProfile(*profile)
+		if err != nil {
+			return err
+		}
+		m.Profile = dir
+	}
 	m.Workspace = ws
 	m.Home = homeDir
 	m.Cwd = "/workspace/" + filepath.Base(ws[0])

@@ -77,7 +77,7 @@ twinbox run <agent>
 | 项 | 现状 | 计划 |
 | --- | --- | --- |
 | MCP 参数级策略 | 已实现按工具名 glob 判定，deny 优先 | 参数级判定与审批闸门 |
-| profile 解包 | 直接用宿主只读根 | OCI 镜像解包 + 版本目录 + 原子切换 |
+| profile 解包 | 已实现：`profile install` 导出镜像为 rootfs，overlay 挂载为根 | 版本清理与引用保护 |
 | macOS / Windows 后端 | 无 | 系统容器 / WSL2，语义不变 |
 | 入箱审查 | 已实现：文件名黑名单 + 内容扫描 + 覆盖留痕 | 增加对嵌套目录与二进制的覆盖 |
 | 会话命令 | 无 | `clean`、`--new` |

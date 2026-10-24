@@ -24,6 +24,10 @@ make build
 ./bin/twinbox run claude      # 进入沙箱；agent 看到的是占位符
 ./bin/twinbox log             # 查看出站审计
 ./bin/twinbox prove .         # 仓库可公开性检查
+
+# 可复现环境（需要 docker，仅安装期使用）
+./bin/twinbox profile install ubuntu:24.04
+./bin/twinbox run claude --profile ubuntu-24.04
 # 工作区里含疑似密钥时，run 会拒绝挂载；确认无害可加 --allow-risky（记入审计）
 ```
 
@@ -65,7 +69,7 @@ make attack                   # 12 条沙箱断言 + 端到端 + 撤销
 
 - 仅 Linux 后端（macOS / Windows 为路线图）
 - MCP 已支持 stdio 隧道与工具级 allow/deny；参数级判定与审批尚未实现
-- 环境使用宿主只读根，尚未做镜像解包与版本管理
+- 环境默认使用宿主只读根；`profile install` 已支持镜像解包（overlay 只读根），版本清理未做
 
 ## 来源说明
 

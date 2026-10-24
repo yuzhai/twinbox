@@ -44,12 +44,15 @@ func Args(m Manifest) []string {
 
 	add("--die-with-parent", "--new-session", "--clearenv")
 	add("--unshare-all", "--cap-drop", "ALL")
+	if m.Profile != "" {
+		// 镜像根以 overlay 挂载：可创建挂载点与临时写入，改动退出即丢弃。
+		add("--overlay-src", m.Profile, "--tmp-overlay", "/")
+	}
 	add("--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp")
-	add("--dir", "/run", "--dir", "/run/twinbox")
+	add("--tmpfs", "/run", "--dir", "/run/twinbox")
 
 	roots := m.HostRoots
 	if m.Profile != "" {
-		add("--ro-bind", m.Profile, "/")
 		roots = nil
 	}
 	for _, r := range roots {
@@ -57,14 +60,21 @@ func Args(m Manifest) []string {
 			add("--ro-bind", r, r)
 		}
 	}
-	for _, r := range m.ReadOnly {
-		if exists(r) {
-			add("--ro-bind", r, r)
+	// profile 模式下根来自镜像，宿主侧的只读补丁不再挂载（镜像自带 /etc/ssl 等）。
+	if m.Profile == "" {
+		for _, r := range m.ReadOnly {
+			if exists(r) {
+				add("--ro-bind", r, r)
+			}
 		}
 	}
 
 	path := "/usr/local/bin:/usr/bin:/bin"
-	for _, dir := range []string{"/opt/toolchain/bin", "/run/twinbox/bin"} {
+	dirs := []string{"/run/twinbox/bin"}
+	if m.Profile == "" {
+		dirs = append([]string{"/opt/toolchain/bin"}, dirs...)
+	}
+	for _, dir := range dirs {
 		add("--dir", dir)
 		path = dir + ":" + path
 	}
@@ -75,7 +85,7 @@ func Args(m Manifest) []string {
 	for _, w := range m.Workspace {
 		base := filepath.Base(w)
 		dest := "/workspace/" + base
-		add("--dir", "/workspace", "--bind", w, dest)
+		add("--dir", "/workspace", "--dir", dest, "--bind", w, dest)
 	}
 	if len(m.Workspace) == 0 {
 		add("--dir", "/workspace")

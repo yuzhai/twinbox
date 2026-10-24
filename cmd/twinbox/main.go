@@ -33,6 +33,8 @@ func main() {
 		err = cmdLog(args)
 	case "prove":
 		err = cmdProve(args)
+	case "profile":
+		err = cmdProfile(args)
 	case "help", "--help", "-h":
 		usage()
 	default:
@@ -55,6 +57,7 @@ func usage() {
   twinbox secret set <name> <value> | list | rm <name>
   twinbox log [N]
   twinbox prove <dir>
+  twinbox profile install <image> | list
   twinbox version
 
 agent: claude | codex | opencode | fake
