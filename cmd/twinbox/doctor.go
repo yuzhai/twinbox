@@ -108,6 +108,14 @@ func checkBinary(name string) check {
 	if name == "" {
 		return check{"agent", false, "未配置", false}
 	}
+	if name == "twinbox-shim" {
+		if self, err := os.Executable(); err == nil {
+			cand := filepath.Join(filepath.Dir(self), "twinbox-shim")
+			if _, err := os.Stat(cand); err == nil {
+				return check{name, true, cand, false}
+			}
+		}
+	}
 	if p, err := exec.LookPath(name); err == nil {
 		return check{name, true, p, false}
 	}
