@@ -1,15 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/yuzhai/twinbox/internal/agent"
+	"github.com/yuzhai/twinbox/internal/scan"
 	"github.com/yuzhai/twinbox/internal/store"
 )
 
@@ -115,62 +114,20 @@ func checkBinary(name string) check {
 	return check{name, false, "未安装（不影响其他 agent）", false}
 }
 
-var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`sk-[A-Za-z0-9_-]{16,}`),
-	regexp.MustCompile(`ghp_[A-Za-z0-9]{20,}`),
-	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
-	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
-	regexp.MustCompile(`(?i)(api[_-]?key|secret|password|passwd)\s*[:=]\s*["']?[A-Za-z0-9_\-\.]{12,}`),
-}
-
 // cmdProve 扫描目录，判断是否可以公开。
 func cmdProve(args []string) error {
 	dir := "."
 	if len(args) > 0 {
 		dir = args[0]
 	}
-	var hits int
-	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			if info.Name() == ".git" || info.Name() == "node_modules" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if info.Size() > 2<<20 {
-			return nil
-		}
-		f, err := os.Open(p)
-		if err != nil {
-			return nil
-		}
-		defer f.Close()
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-		line := 0
-		for sc.Scan() {
-			line++
-			for _, re := range secretPatterns {
-				m := re.FindString(sc.Text())
-				if m == "" {
-					continue
-				}
-				if strings.Contains(strings.ToLower(m), "placeholder") {
-					continue // 占位符是有意为之，不算命中
-				}
-				fmt.Printf("%s:%d 命中 %s\n", p, line, m)
-				hits++
-				break
-			}
-		}
-		return nil
-	})
+	findings, err := scan.Dir(dir)
 	if err != nil {
 		return err
 	}
+	for _, f := range findings {
+		fmt.Printf("%s:%d 命中 %s\n", f.Path, f.Line, f.Match)
+	}
+	hits := len(findings)
 	if hits > 0 {
 		fmt.Printf("\n发现 %d 处疑似密钥，不可公开\n", hits)
 		return fmt.Errorf("可公开性检查未通过")

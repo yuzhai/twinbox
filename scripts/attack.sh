@@ -72,7 +72,23 @@ else
   echo "FAIL  mcp  隧道调用失败"; fail=1
 fi
 
-# 5) 沙箱行为与红队用例
+# 5) 入箱审查：含疑似密钥的工作区默认拒绝
+echo
+echo "== 入箱审查 =="
+mkdir -p "$TMP/risky"
+printf 'sk-%s\n' "$(date +%s%N)" > "$TMP/risky/leak.txt"
+if "$BIN" run fake --workspace "$TMP/risky" --exec true >/dev/null 2>&1; then
+  echo "FAIL  admission  含密钥的工作区被放行"; fail=1
+else
+  echo "PASS  admission  含密钥的工作区被拒绝"
+fi
+if "$BIN" run fake --workspace "$TMP/risky" --exec true --allow-risky >/dev/null 2>&1; then
+  echo "PASS  admission  --allow-risky 可显式覆盖并留痕"
+else
+  echo "FAIL  admission  --allow-risky 未生效"; fail=1
+fi
+
+# 6) 沙箱行为与红队用例
 echo
 echo "== L3/L4 沙箱内断言 =="
 if "$BIN" run fake --exec "sh scripts/sandbox-test.sh"; then
