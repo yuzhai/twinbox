@@ -24,7 +24,10 @@ var Patterns = []*regexp.Regexp{
 	regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`),
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 	regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`),
-	regexp.MustCompile(`(?i)(api[_-]?key|secret|password|passwd)\s*[:=]\s*["']?[A-Za-z0-9_\-\.]{12,}`),
+	// 只匹配"看起来像值"的赋值：带引号，或等号后是长串纯标识符。
+	// 避免把 `APIKey: p.Settings.APIKey` 这类代码表达式误报。
+	regexp.MustCompile(`(?i)(api[_-]?key|secret|password|passwd|token)\s*[:=]\s*["'][^"']{12,}["']`),
+	regexp.MustCompile(`(?i)(api[_-]?key|password|passwd)\s*=\s*[A-Za-z0-9_\-]{16,}`),
 }
 
 // DeniedNames 是默认拒绝进入沙箱的文件名模式。

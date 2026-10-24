@@ -114,7 +114,7 @@ func (s Set) WithCompat(host string) Set {
 		Host:   host,
 		Prefix: "/compat",
 		Inject: map[string]string{"authorization": "Bearer @openai"},
-		Allow:  []string{"POST /v1/*", "GET /v1/*"},
+		Allow:  []string{"POST /chat/completions", "POST /v1/chat/completions", "GET /models", "GET /v1/models"},
 	})
 	return out
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/yuzhai/twinbox/internal/agent"
 	"github.com/yuzhai/twinbox/internal/audit"
 	"github.com/yuzhai/twinbox/internal/broker"
+	"github.com/yuzhai/twinbox/internal/derive"
 	"github.com/yuzhai/twinbox/internal/mcp"
 	"github.com/yuzhai/twinbox/internal/policy"
 	"github.com/yuzhai/twinbox/internal/sandbox"
@@ -36,6 +37,9 @@ func cmdRun(args []string) error {
 	shimPath := fs.String("shim", "", "twinbox-shim 路径（默认与 twinbox 同目录）")
 	execCmd := fs.String("exec", "", "用 shell 命令代替 agent")
 	allowRisky := fs.Bool("allow-risky", false, "跳过入箱审查（会记录到审计）")
+	deriveOC := fs.Bool("derive-opencode", false, "从本机 opencode 配置派生 base URL 与密钥（仅内存）")
+	providerName := fs.String("provider", "qiniu", "派生的 provider 名")
+	modelName := fs.String("model", "", "透传给 agent 的模型名")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -116,9 +120,23 @@ func cmdRun(args []string) error {
 	}
 	_ = al.Write(audit.Record{Host: "(admission)", Method: "CHECK", Path: strings.Join(ws, " "), Status: 0, Decision: admDecision, Reason: fmt.Sprintf("%d findings", len(adm.Findings))})
 
+	var derived *derive.Provider
+	var envCompat string
+	if *deriveOC {
+		d, err := derive.OpencodeProvider("", *providerName)
+		if err != nil {
+			return fmt.Errorf("读取 opencode 配置失败: %w", err)
+		}
+		derived = d
+		st.SetVolatile("openai", d.APIKey) // 只在内存，不落盘
+		envCompat = d.Host()
+	}
 	rules := policy.Default()
 	if h := os.Getenv("TWINBOX_COMPAT_HOST"); h != "" {
-		rules = rules.WithCompat(h)
+		envCompat = h
+	}
+	if envCompat != "" {
+		rules = rules.WithCompat(envCompat)
 	}
 	// 测试与离线演示用：把内置上游指向本地替身
 	if up := os.Getenv("TWINBOX_UPSTREAM_ANTHROPIC"); up != "" {
@@ -186,11 +204,19 @@ func cmdRun(args []string) error {
 		}
 	}
 
-	ctx := agent.Context{Home: homeDir, BaseURL: "http://127.0.0.1:8899", Compat: "compat.local", MCP: mcpNames}
+	models := []string{}
+	if derived != nil {
+		models = derived.Models
+	}
+	ctx := agent.Context{Home: homeDir, BaseURL: "http://127.0.0.1:8899", CompatURL: "http://127.0.0.1:8897", Compat: envCompat, MCP: mcpNames, Models: models}
+	routes := "8899=api.anthropic.com"
+	if envCompat != "" {
+		routes += ",8897=" + envCompat
+	}
 	env := map[string]string{
 		"TWINBOX":        "1",
 		"TWINBOX_SOCK":   "/run/twinbox/broker.sock",
-		"TWINBOX_ROUTES": "8899=api.anthropic.com",
+		"TWINBOX_ROUTES": routes,
 	}
 	if mcpSockHost != "" {
 		env["TWINBOX_MCP_SOCK"] = "/run/twinbox/mcp.sock"
@@ -215,9 +241,17 @@ func cmdRun(args []string) error {
 	m.Bins[shim] = "/run/twinbox/bin/twinbox-shim"
 	m.Env = env
 
+	agentBin := ""
+	if ad.Binary != "" {
+		if p, err := exec.LookPath(ad.Binary); err == nil {
+			agentBin = "/run/twinbox/bin/" + filepath.Base(p)
+			m.Bins[p] = agentBin
+		}
+	}
+
 	var cmd []string
 	if *execCmd != "" {
-		cmd = []string{"/bin/sh", "-c", *execCmd}
+		cmd = []string{"/run/twinbox/bin/twinbox-shim", "bridge", "--", "/bin/sh", "-c", *execCmd}
 	} else if ad.Name == "fake" {
 		fake := os.Getenv("TWINBOX_FAKE_AGENT")
 		if fake == "" {
@@ -225,12 +259,13 @@ func cmdRun(args []string) error {
 		}
 		cmd = []string{"/run/twinbox/bin/twinbox-shim", "bridge", "--", "/bin/sh", fake}
 	} else {
-		bin, err := exec.LookPath(ad.Binary)
-		if err != nil {
+		if agentBin == "" {
 			return fmt.Errorf("找不到 %s 可执行文件（沙箱内需要它）", ad.Binary)
 		}
-		m.Bins[bin] = "/run/twinbox/bin/" + filepath.Base(bin)
-		cmd = []string{"/run/twinbox/bin/twinbox-shim", "bridge", "--", "/run/twinbox/bin/" + filepath.Base(bin)}
+		cmd = []string{"/run/twinbox/bin/twinbox-shim", "bridge", "--", agentBin}
+		if *modelName != "" {
+			env["TWINBOX_MODEL"] = *modelName
+		}
 	}
 
 	bwrap, err := exec.LookPath("bwrap")

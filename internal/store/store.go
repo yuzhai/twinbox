@@ -61,6 +61,11 @@ func (s *Store) Set(name, value string) error {
 	return s.flush()
 }
 
+// SetVolatile 只在内存中注入，不落盘。用于从现有配置派生出的密钥。
+func (s *Store) SetVolatile(name, value string) {
+	s.data[name] = value
+}
+
 // Delete 删除一个值。
 func (s *Store) Delete(name string) error {
 	delete(s.data, name)
