@@ -24,6 +24,7 @@ make build
 ./bin/twinbox run claude      # 进入沙箱；agent 看到的是占位符
 ./bin/twinbox log             # 查看出站审计
 ./bin/twinbox prove .         # 仓库可公开性检查
+# 工作区里含疑似密钥时，run 会拒绝挂载；确认无害可加 --allow-risky（记入审计）
 ```
 
 离线验证（不需要网络与账号）：

@@ -16,7 +16,7 @@
 | L1 单元 | 策略匹配、路径判定、配置生成 | 无 | 宿主 | `go test ./...` |
 | L2 集成（宿主侧） | broker 注入、审计、拒绝；MCP 网关注入与分发 | 假上游、假 MCP | 宿主 | `go test ./internal/...` |
 | L3 沙箱行为 | 挂载表、环境变量、网络、可见路径 | bwrap | 沙箱 | `make sandbox-test` |
-| L4 红队 | 攻击用例（凭据、外发、注入、撤销） | bwrap + 假上游 | 沙箱 | `make attack` |
+| L4 红队 | 攻击用例（凭据、外发、注入、撤销、入箱审查） | bwrap + 假上游 | 沙箱 | `make attack` |
 | L5 端到端 | 一个 agent 完成一轮对话 | 假 agent 或真实 agent | 宿主 + 沙箱 | `make e2e` |
 | L6 可公开性 | 快照中没有密钥 | 无 | 宿主 | `twinbox prove` |
 

@@ -15,6 +15,7 @@
 | --- | --- | --- | --- | --- |
 | CLI | `cmd/twinbox` | 宿主 | `run/doctor/secret/log/prove` | 长期持有明文密钥 |
 | 沙箱启动器 | `internal/sandbox` | 宿主 | 生成 bwrap 参数 | 挂载宿主 home、docker.sock、ssh socket |
+| 入箱审查 | `internal/admission` + `internal/scan` | 宿主 | 挂载前扫描工作区，命中即拒绝，覆盖需留痕 | 静默放行 |
 | 出站代理 | `internal/broker` | 宿主 | 主机与路径判定、header 注入、CONNECT 透传、审计 | 信任请求体自报的目标 |
 | 策略 | `internal/policy` | 宿主 | 内置规则，零配置文件 | 读用户手写的策略文件 |
 | 密钥库 | `internal/store` | 宿主 | 0600 的 JSON，按名字取值 | 把值下发到沙箱 |
@@ -62,6 +63,7 @@
 ```
 twinbox run <agent>
   ├─ store.Load          读密钥（不传给沙箱）
+  ├─ admission.Check     入箱审查：命中即拒绝，--allow-risky 覆盖需留痕
   ├─ broker.ServeUnix    在临时目录启动 unix socket
   ├─ agent.Write         生成沙箱 home 里的配置（只含占位符与本地地址）
   ├─ sandbox.Args        生成 bwrap 参数（unshare-all / clearenv / cap-drop）
@@ -77,7 +79,7 @@ twinbox run <agent>
 | MCP 参数级策略 | 只做到按名字分发 | 按工具与参数判定，破坏性动词需审批 |
 | profile 解包 | 直接用宿主只读根 | OCI 镜像解包 + 版本目录 + 原子切换 |
 | macOS / Windows 后端 | 无 | 系统容器 / WSL2，语义不变 |
-| 入箱审查 | 依赖 `.gitignore` 与 `prove` | 启动前路径黑名单 + 内容扫描 + 留痕 |
+| 入箱审查 | 已实现：文件名黑名单 + 内容扫描 + 覆盖留痕 | 增加对嵌套目录与二进制的覆盖 |
 | 会话命令 | 无 | `clean`、`--new` |
 | SSH / 云 API 鉴权 | 默认全禁 | 宿主侧执行器 + 受限 agent 代理 |
 

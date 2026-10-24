@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yuzhai/twinbox/internal/admission"
 	"github.com/yuzhai/twinbox/internal/agent"
 	"github.com/yuzhai/twinbox/internal/audit"
 	"github.com/yuzhai/twinbox/internal/broker"
@@ -34,6 +35,7 @@ func cmdRun(args []string) error {
 	home := fs.String("home", "", "沙箱 home 的宿主路径（默认按工作区派生）")
 	shimPath := fs.String("shim", "", "twinbox-shim 路径（默认与 twinbox 同目录）")
 	execCmd := fs.String("exec", "", "用 shell 命令代替 agent")
+	allowRisky := fs.Bool("allow-risky", false, "跳过入箱审查（会记录到审计）")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -100,6 +102,19 @@ func cmdRun(args []string) error {
 		return err
 	}
 	defer al.Close()
+
+	// 入箱审查：进入沙箱的内容必须先被检查并留痕
+	adm := admission.Check(ws)
+	admDecision := "allow"
+	if adm.Blocked() {
+		fmt.Fprintln(os.Stderr, adm.Summary())
+		if !*allowRisky {
+			return fmt.Errorf("入箱审查未通过：请移除上述内容，或显式使用 --allow-risky（会留痕）")
+		}
+		admDecision = "override"
+		fmt.Fprintln(os.Stderr, "twinbox: 已按 --allow-risky 继续，本次决定已记入审计")
+	}
+	_ = al.Write(audit.Record{Host: "(admission)", Method: "CHECK", Path: strings.Join(ws, " "), Status: 0, Decision: admDecision, Reason: fmt.Sprintf("%d findings", len(adm.Findings))})
 
 	rules := policy.Default()
 	if h := os.Getenv("TWINBOX_COMPAT_HOST"); h != "" {
