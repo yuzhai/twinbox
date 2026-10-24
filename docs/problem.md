@@ -97,7 +97,7 @@ P1 是大家最常讨论的，P4 是最容易被忽略的，而 P3 决定了方�
 
 Slack、Notion、Jira、Linear 等，每个服务一个 token。
 **今天的失败模式**：token 被明文写进 MCP 配置的 `environment` 字段，而这些配置就在
-agent 会读的目录里。这是本议题明确指出的问题。
+agent 会读的目录里。这是当前 MCP 生态里最普遍的一种配置方式。
 
 ### S6 多 agent 并存
 
