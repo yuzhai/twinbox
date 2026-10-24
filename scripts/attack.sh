@@ -52,7 +52,27 @@ else
   echo "PASS  revoke  删除凭据后调用失败"
 fi
 
-# 4) 沙箱行为与红队用例
+# 4) MCP 隧道：沙箱内只有 shim，凭据由宿主网关注入
+echo
+echo "== MCP 隧道 =="
+"$BIN" secret set github ghp_real_test_value >/dev/null
+cat > "$TMP/mcp.json" <<EOF
+{"servers":{"echo":{"command":["/bin/sh","$PWD/testdata/fake-mcp.sh"],"env":{"GITHUB_TOKEN":"@github"}}}}
+EOF
+export TWINBOX_MCP_CONFIG="$TMP/mcp.json"
+if out=$("$BIN" run fake --exec "sh scripts/mcp-check.sh" 2>&1); then
+  echo "$out" | sed 's/^/  /'
+  if echo "$out" | grep -q '"hasCredential":true'; then
+    echo "PASS  mcp  隧道连通且凭据由宿主注入"
+  else
+    echo "FAIL  mcp  凭据未注入"; fail=1
+  fi
+else
+  echo "$out" | sed 's/^/  /'
+  echo "FAIL  mcp  隧道调用失败"; fail=1
+fi
+
+# 5) 沙箱行为与红队用例
 echo
 echo "== L3/L4 沙箱内断言 =="
 if "$BIN" run fake --exec "sh scripts/sandbox-test.sh"; then
