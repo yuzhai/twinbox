@@ -10,12 +10,14 @@ SHIM="$PWD/bin/twinbox-shim"
 
 MODEL="${TWINBOX_E2E_MODEL:-deepseek-v4-1-flash}"
 WS="${TMPDIR:-/tmp}/twinbox-e2e/ws"
+PROFILE_FLAG=""
+[ -n "${TWINBOX_E2E_PROFILE:-}" ] && PROFILE_FLAG="--profile ${TWINBOX_E2E_PROFILE}"
 rm -rf "$WS" && mkdir -p "$WS"
 
 export TWINBOX_SHIM="$SHIM"
 
 echo "== 真实流程：opencode @ $MODEL =="
-if ! out=$("$BIN" run opencode --derive-opencode --workspace "$WS" --exec \
+if ! out=$("$BIN" run opencode --derive-opencode $PROFILE_FLAG --workspace "$WS" --exec \
   "cd /workspace/ws && opencode run 'Create a file named proof.txt whose exact content is PONG. Then reply with DONE.' -m twinbox/$MODEL --standalone --format json" 2>&1); then
   echo "$out" | tail -5 | sed 's/^/  /'
   echo "FAIL  e2e-real  agent 运行失败" >&2
