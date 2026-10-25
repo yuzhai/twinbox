@@ -218,6 +218,12 @@ func cmdRun(args []string) error {
 		"TWINBOX":        "1",
 		"TWINBOX_SOCK":   "/run/twinbox/broker.sock",
 		"TWINBOX_ROUTES": routes,
+		"TWINBOX_PROXY_PORT": "8898",
+		"HTTP_PROXY":         "http://127.0.0.1:8898",
+		"HTTPS_PROXY":        "http://127.0.0.1:8898",
+		"http_proxy":         "http://127.0.0.1:8898",
+		"https_proxy":        "http://127.0.0.1:8898",
+		"NO_PROXY":           "127.0.0.1,localhost,::1",
 	}
 	if mcpSockHost != "" {
 		env["TWINBOX_MCP_SOCK"] = "/run/twinbox/mcp.sock"

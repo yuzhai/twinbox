@@ -16,7 +16,7 @@
 | CLI | `cmd/twinbox` | 宿主 | `run/doctor/secret/log/prove` | 长期持有明文密钥 |
 | 沙箱启动器 | `internal/sandbox` | 宿主 | 生成 bwrap 参数 | 挂载宿主 home、docker.sock、ssh socket |
 | 入箱审查 | `internal/admission` + `internal/scan` | 宿主 | 挂载前扫描工作区，命中即拒绝，覆盖需留痕 | 静默放行 |
-| 出站代理 | `internal/broker` | 宿主 | 主机与路径判定、header 注入、CONNECT 透传、审计 | 信任请求体自报的目标 |
+| 出站代理 | `internal/broker` | 宿主 | 白名单主机做方法/路径限制并注入凭据；其余主机默认放行不注入；元数据地址拒绝；全程审计 | 信任请求体自报的目标 |
 | 策略 | `internal/policy` | 宿主 | 内置规则，零配置文件 | 读用户手写的策略文件 |
 | 密钥库 | `internal/store` | 宿主 | 0600 的 JSON，按名字取值 | 把值下发到沙箱 |
 | 审计 | `internal/audit` | 宿主 | 追加式 JSONL | 可被沙箱写入 |
