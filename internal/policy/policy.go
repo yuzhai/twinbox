@@ -2,9 +2,29 @@
 package policy
 
 import (
-	"path"
+	"regexp"
 	"strings"
 )
+
+// match 实现 glob：* 匹配任意字符（含 /），? 匹配单个字符。
+// 不用 path.Match，因为它的 * 不跨目录分隔符。
+func match(pattern, s string) bool {
+	var b strings.Builder
+	b.WriteString("^")
+	for _, r := range pattern {
+		switch r {
+		case '*':
+			b.WriteString(".*")
+		case '?':
+			b.WriteString(".")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(r)))
+		}
+	}
+	b.WriteString("$")
+	ok, _ := regexp.MatchString(b.String(), s)
+	return ok
+}
 
 // Rule 描述一个上游目标的访问策略。
 type Rule struct {
@@ -66,7 +86,7 @@ func (r Rule) Allowed(method, p string) bool {
 		if parts[0] != "*" && !strings.EqualFold(parts[0], method) {
 			continue
 		}
-		if ok, err := path.Match(parts[1], p); err == nil && ok {
+		if match(parts[1], p) {
 			return true
 		}
 	}

@@ -16,7 +16,7 @@ import (
 	"github.com/yuzhai/twinbox/internal/store"
 )
 
-func startBroker(t *testing.T, rules policy.Set, secrets map[string]string) (sock, auditPath string, stop func()) {
+func startBroker(t *testing.T, rules policy.Set, secrets map[string]string) (sock, auditPath string, b *Broker, stop func()) {
 	t.Helper()
 	dir := t.TempDir()
 	sp := filepath.Join(dir, "secrets.json")
@@ -34,7 +34,7 @@ func startBroker(t *testing.T, rules policy.Set, secrets map[string]string) (soc
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := New(rules, st, al)
+	b = New(rules, st, al)
 	b.Scheme = "http"
 	s := filepath.Join(dir, "b.sock")
 	go func() { _ = b.ServeUnix(s) }()
@@ -44,7 +44,7 @@ func startBroker(t *testing.T, rules policy.Set, secrets map[string]string) (soc
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return s, ap, func() { al.Close() }
+	return s, ap, b, func() { al.Close() }
 }
 
 func clientFor(sock string) *http.Client {
@@ -77,7 +77,7 @@ func TestInjectsCredentialAndAudits(t *testing.T) {
 		Allow:    []string{"POST /v1/messages"},
 		Upstream: strings.TrimPrefix(up.URL, "http://"),
 	}}}
-	sock, ap, stop := startBroker(t, rules, map[string]string{"anthropic": "REAL-KEY"})
+	sock, ap, _, stop := startBroker(t, rules, map[string]string{"anthropic": "REAL-KEY"})
 	defer stop()
 
 	req, _ := http.NewRequest("POST", "http://api.anthropic.com/anthropic/v1/messages", strings.NewReader(`{}`))
@@ -102,12 +102,12 @@ func TestInjectsCredentialAndAudits(t *testing.T) {
 	}
 }
 
-func TestDeniesUnknownHost(t *testing.T) {
+func TestDenylistedHostAlwaysDenied(t *testing.T) {
 	rules := policy.Default()
-	sock, ap, stop := startBroker(t, rules, nil)
+	sock, ap, _, stop := startBroker(t, rules, nil)
 	defer stop()
 
-	resp, err := clientFor(sock).Get("http://evil.example/anthropic/v1/messages")
+	resp, err := clientFor(sock).Get("http://169.254.169.254/latest/meta-data/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,9 +121,25 @@ func TestDeniesUnknownHost(t *testing.T) {
 	}
 }
 
+func TestUnknownHostDeniedWhenDefaultAllowOff(t *testing.T) {
+	rules := policy.Default()
+	sock, _, b, stop := startBroker(t, rules, nil)
+	defer stop()
+	b.DefaultAllow = false
+
+	resp, err := clientFor(sock).Get("http://unknown.example/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("DefaultAllow=false 时应拒绝，status=%d", resp.StatusCode)
+	}
+}
+
 func TestDeniesDisallowedPath(t *testing.T) {
 	rules := policy.Default()
-	sock, _, stop := startBroker(t, rules, map[string]string{"anthropic": "REAL"})
+	sock, _, _, stop := startBroker(t, rules, map[string]string{"anthropic": "REAL"})
 	defer stop()
 
 	resp, err := clientFor(sock).Post("http://api.anthropic.com/anthropic/v1/admin", "application/json", strings.NewReader(`{}`))
@@ -138,7 +154,7 @@ func TestDeniesDisallowedPath(t *testing.T) {
 
 func TestMissingSecretDenies(t *testing.T) {
 	rules := policy.Default()
-	sock, _, stop := startBroker(t, rules, nil)
+	sock, _, _, stop := startBroker(t, rules, nil)
 	defer stop()
 
 	resp, err := clientFor(sock).Post("http://api.anthropic.com/anthropic/v1/messages", "application/json", strings.NewReader(`{}`))

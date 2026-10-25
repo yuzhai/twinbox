@@ -24,6 +24,10 @@ type Broker struct {
 	Client  *http.Client
 	Scheme  string // 默认 https；测试用 http
 	Session string
+	// DefaultAllow 为 true 时，未命中规则的普通主机默认放行（只审计、不注入凭据）。
+	// 凭据仍然只对显式规则注入，元数据地址始终拒绝。
+	DefaultAllow bool
+	DenyHosts    []string
 }
 
 // New 构造一个带默认超时的 broker。
@@ -32,7 +36,9 @@ func New(rules policy.Set, secrets *store.Store, log *audit.Log) *Broker {
 		Rules:   rules,
 		Secrets: secrets,
 		Audit:   log,
-		Scheme:  "https",
+		Scheme:       "https",
+		DefaultAllow: true,
+		DenyHosts:    []string{"169.254.169.254", "metadata.google.internal", "100.100.100.200", "127.0.0.1", "localhost", "::1"},
 		Client: &http.Client{
 			Timeout: 120 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -84,8 +90,17 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := hostOnly(r.Host)
 	rule, ok := b.Rules.Match(host)
 	if !ok {
-		b.record(audit.Record{Host: host, Method: r.Method, Path: r.URL.Path, Status: 403, Decision: "deny", Reason: "no rule"})
-		writeErr(w, http.StatusForbidden, "twinbox: host not allowed: "+host)
+		if b.denied(host) {
+			b.record(audit.Record{Host: host, Method: r.Method, Path: r.URL.Path, Status: 403, Decision: "deny", Reason: "denylisted host"})
+			writeErr(w, http.StatusForbidden, "twinbox: host denied: "+host)
+			return
+		}
+		if !b.DefaultAllow {
+			b.record(audit.Record{Host: host, Method: r.Method, Path: r.URL.Path, Status: 403, Decision: "deny", Reason: "no rule"})
+			writeErr(w, http.StatusForbidden, "twinbox: host not allowed: "+host)
+			return
+		}
+		b.forwardPlain(w, r, host)
 		return
 	}
 
@@ -162,12 +177,69 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b.record(audit.Record{Host: host, Method: r.Method, Path: outPath, Status: resp.StatusCode, BytesOut: n, Decision: "allow"})
 }
 
+// forwardPlain 处理未命中规则的主机：只转发、不注入，并记录原因。
+func (b *Broker) forwardPlain(w http.ResponseWriter, r *http.Request, host string) {
+	scheme := r.Header.Get("X-Twinbox-Scheme")
+	if scheme == "" {
+		scheme = b.Scheme
+		if scheme == "" {
+			scheme = "https"
+		}
+	}
+	target := scheme + "://" + host + r.URL.Path
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, r.Body)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "twinbox: bad request")
+		return
+	}
+	for k, vs := range r.Header {
+		if isHopByHop(k) || strings.EqualFold(k, "Host") || strings.HasPrefix(strings.ToLower(k), "x-twinbox-") {
+			continue
+		}
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
+	resp, err := b.Client.Do(req)
+	if err != nil {
+		b.record(audit.Record{Host: host, Method: r.Method, Path: r.URL.Path, Status: 502, Decision: "allow", Reason: "default-allow; upstream error"})
+		writeErr(w, http.StatusBadGateway, "twinbox: upstream error")
+		return
+	}
+	defer resp.Body.Close()
+	for k, vs := range resp.Header {
+		if isHopByHop(k) {
+			continue
+		}
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	n, _ := io.Copy(w, resp.Body)
+	b.record(audit.Record{Host: host, Method: r.Method, Path: r.URL.Path, Status: resp.StatusCode, BytesOut: n, Decision: "allow", Reason: "default-allow"})
+}
+
+func (b *Broker) denied(host string) bool {
+	h := strings.ToLower(host)
+	for _, d := range b.DenyHosts {
+		d = strings.ToLower(d)
+		if h == d || strings.HasSuffix(h, "."+d) {
+			return true
+		}
+	}
+	return false
+}
+
 // handleConnect 只做透传，不注入：用于包管理器这类不需要凭据的出站。
 func (b *Broker) handleConnect(w http.ResponseWriter, r *http.Request) {
 	target := r.Host
 	host := hostOnly(target)
 	rule, ok := b.Rules.Match(host)
-	if !ok || !rule.Allowed("CONNECT", "/") {
+	if b.denied(host) || (ok && !rule.Allowed("CONNECT", "/")) || (!ok && !b.DefaultAllow) {
 		b.record(audit.Record{Host: host, Method: "CONNECT", Status: 403, Decision: "deny", Reason: "connect not allowed"})
 		writeErr(w, http.StatusForbidden, "twinbox: connect not allowed")
 		return

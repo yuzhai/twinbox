@@ -48,7 +48,7 @@ make attack                   # 12 条沙箱断言 + 端到端 + 撤销
 
 选型依据见 **[docs/solution-analysis.md](docs/solution-analysis.md)**（需求基线、业界做法差异、匹配度矩阵）。
 
-- **隔离**：Linux 用 bubblewrap（非特权、独立网络命名空间、出站默认拒绝）。
+- **隔离**：Linux 用 bubblewrap（非特权、独立网络命名空间）。出站默认放行但全程审计，**凭据只对白名单主机注入**，云元数据地址始终拒绝。
 - **环境**：宿主只读根（v1）；镜像 profile 解包为路线图。
 - **凭据**：沙箱内只出现占位符，真实值由宿主侧 broker 在边界注入。
 - **MCP**：服务端运行在宿主，沙箱内只有 `twinbox-shim mcp <name>`，配置零敏感信息。

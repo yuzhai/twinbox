@@ -9,7 +9,7 @@
 | 0:15–0:40 | `make build && ./bin/twinbox doctor` | 前置条件可自检 |
 | 0:40–1:10 | 宿主机上 `./bin/twinbox secret set anthropic <key>`，再 `./bin/twinbox run fake` | 密钥只在宿主；沙箱内经代理调用成功 |
 | 1:10–1:50 | 沙箱内：`env`、`~/.ssh`、`/proc`、`ip addr`、`docker.sock` | 零凭据 + 隔离 |
-| 1:50–2:40 | `make attack`：12 条沙箱断言逐条 PASS，含外网不可达与元数据地址不可达 | 默认拒绝 |
+| 1:50–2:40 | `make attack`：12 条沙箱断言逐条 PASS，含元数据地址被拒、普通外网可用 | 出站可控 |
 | 2:40–3:10 | `./bin/twinbox log`：出站请求与审计一一对账 | 可追溯 |
 | 3:10–3:30 | `./bin/twinbox secret rm anthropic`，再跑一次失败 | 可撤销 |
 | 3:30–3:50 | `./bin/twinbox prove .`：仓库可公开性检查 | 承诺可证 |

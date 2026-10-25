@@ -58,6 +58,24 @@ func bridge(rest []string) error {
 		routes = "8899=api.anthropic.com"
 	}
 
+	proxyPort := os.Getenv("TWINBOX_PROXY_PORT")
+	if proxyPort == "" {
+		proxyPort = "8898"
+	}
+	if pl, err := net.Listen("tcp", "127.0.0.1:"+proxyPort); err == nil {
+		go func() {
+			for {
+				c, err := pl.Accept()
+				if err != nil {
+					return
+				}
+				go handleProxy(c, sock)
+			}
+		}()
+	} else {
+		return fmt.Errorf("listen proxy %s: %w", proxyPort, err)
+	}
+
 	for _, r := range strings.Split(routes, ",") {
 		parts := strings.SplitN(strings.TrimSpace(r), "=", 2)
 		if len(parts) != 2 {
@@ -174,4 +192,69 @@ func mcpCmd(name string) error {
 	}()
 	_, err = io.Copy(os.Stdout, c)
 	return err
+}
+
+// handleProxy 处理通用代理请求：CONNECT 直接隧道，普通请求按绝对 URI 转发。
+func handleProxy(c net.Conn, sock string) {
+	defer c.Close()
+	br := bufio.NewReader(c)
+	req, err := http.ReadRequest(br)
+	if err != nil {
+		return
+	}
+	if req.Method == http.MethodConnect {
+		up, err := net.DialTimeout("unix", sock, 5*time.Second)
+		if err != nil {
+			return
+		}
+		defer up.Close()
+		fmt.Fprintf(up, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", req.URL.Host, req.URL.Host)
+		ubr := bufio.NewReader(up)
+		resp, err := http.ReadResponse(ubr, req)
+		if err != nil {
+			return
+		}
+		if resp.StatusCode != 200 {
+			fmt.Fprintf(c, "HTTP/1.1 %d %s\r\n\r\n", resp.StatusCode, resp.Status)
+			return
+		}
+		fmt.Fprint(c, "HTTP/1.1 200 Connection Established\r\n\r\n")
+		go io.Copy(up, br)
+		_, _ = io.Copy(c, ubr)
+		return
+	}
+
+	host := req.URL.Host
+	scheme := req.URL.Scheme
+	if host == "" {
+		host = req.Host
+	}
+	if scheme == "" {
+		scheme = "http"
+	}
+	target := "http://" + host + req.URL.RequestURI()
+	out, err := http.NewRequest(req.Method, target, req.Body)
+	if err != nil {
+		return
+	}
+	out.Host = host
+	out.Header.Set("X-Twinbox-Scheme", scheme)
+	for k, vs := range req.Header {
+		for _, v := range vs {
+			out.Header.Add(k, v)
+		}
+	}
+	client := &http.Client{Timeout: 120 * time.Second, Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", sock)
+		},
+	}}
+	resp, err := client.Do(out)
+	if err != nil {
+		fmt.Fprint(c, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+		return
+	}
+	defer resp.Body.Close()
+	_ = resp.Write(c)
 }
